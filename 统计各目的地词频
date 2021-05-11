@@ -1,0 +1,104 @@
+# 开发时间 ；2021/4/28 0028 10:20
+import os
+import xlrd
+
+#os.chdir(r"F:\\DM\\TDB")
+os.chdir('F:\\DM\\TDB\\第一问')
+def read():
+    file_path = 'comment_1.xlsx'
+    data = xlrd.open_workbook(file_path)
+    table = data.sheet_by_name('Sheet1')
+    nrows = table.nrows
+
+    for i in range(1, nrows):
+        file = open('F:\\DM\\TDB\\第一问\\50景点50酒店\\'+ str(table.cell(i, 0).value) + '.csv', 'wb+')
+        file.write(str(table.cell(i, 1).value).encode(encoding='utf-8'))
+        file.close()
+    return 'done.'
+read()
+
+mport pandas as pd
+import os
+import jieba
+import xlwt
+
+folder_path = r"F:\DM\TDB\第一问\50景点50酒店"
+os.listdir(folder_path)#给出"F:\DM\TDB\第一问\各景点和酒店内容"下所有的文件
+
+
+
+def is_Chinese(word):
+    for ch in word:
+        if '\u4e00' <= ch <= '\u9fff':
+            return True
+    return False
+def stopwordlist():
+    stopwords = [line.strip() for line in open('F:\\DM\\keyword_extraction-master\\data\\stopWord.txt', encoding='UTF-8').readlines()]
+    return stopwords
+word_stop = stopwordlist()
+
+def words_count(file):
+    with open(file, 'r', encoding='utf-8') as f:
+        raw = f.read()
+        #print(raw)
+        word_cut = jieba.cut(raw, cut_all=False) # jieba.cut()：第一个参数为需要分词的字符串，第二个cut_all控制是否全模式。
+        word_list = list(word_cut)
+        for s in word_list[::-1]:
+            if not is_Chinese(s):
+                word_list.remove(s)
+        for t in word_list[::-1]:
+            if len(t)<2:
+                word_list.remove(t)
+        for a in word_list:
+            if a in word_stop:
+                word_list.remove(a)
+        return word_list
+
+#对分词结果按照词频降序
+
+def word_dict(word_list):
+    all_word_dict = {}
+    for word in word_list:
+        if word in all_word_dict.keys():
+            all_word_dict[word] += 1
+        else:
+            all_word_dict[word] = 1
+
+    all_word_tuple_list = sorted(all_word_dict.items(), key=lambda item:item[1], reverse=True)
+    #all_word_tuple_list =all_word_tuple_list[0:20]
+    #print(all_word_tuple_list)
+    return all_word_tuple_list
+
+#把结果写入CSV文件
+
+def to_csv(all_word_tuple_list):
+    data = pd.DataFrame(all_word_tuple_list)
+    #print(data[0])
+    file_new = file
+    #print(file_new)
+    data.to_csv(file_new)
+
+#调用函数，输出结果
+
+path_tem = r"F:\DM\TDB\第一问\50景点50酒店"
+
+myWorkbook = xlwt.Workbook()
+mySheet = myWorkbook.add_sheet('Sheet1', cell_overwrite_ok=True)
+
+rows = 0
+for file in os.listdir(folder_path):
+    #print(file)
+    file_tem = os.path.join(path_tem,file)
+    word_list = words_count(file_tem)
+    all_word_tuple_list = word_dict(word_list)
+    #print(all_word_tuple_list)
+    for i in all_word_tuple_list[0:20]:  # 写入top20关键字
+        # print(i)
+        mySheet.write(rows + 1, 0, i[0])
+        mySheet.write(rows + 1, 1, i[1])
+        rows += 1
+    mySheet.write(0, 0, '评论热词')
+    mySheet.write(0, 1, '热度')
+
+    myWorkbook.save(file)
+
