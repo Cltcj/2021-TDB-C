@@ -1,0 +1,244 @@
+# 开发时间 ；2021/5/2 0003 14:47
+import pandas as pd
+import numpy as np
+import jieba
+import multiprocessing
+from gensim.models.word2vec import Word2Vec
+import warnings
+import keras
+warnings.filterwarnings(action='ignore', category=UserWarning, module='gensim')# 忽略警告
+from gensim.corpora.dictionary import Dictionary
+from tensorflow.keras.preprocessing import sequence
+from sklearn.model_selection import train_test_split
+from keras.models import Sequential
+from keras.layers.embeddings import Embedding
+from keras.layers.recurrent import LSTM
+from keras.layers.core import Dense, Dropout,Activation
+from keras.models import model_from_yaml
+np.random.seed(1337)  # For Reproducibility
+import sys
+sys.setrecursionlimit(1000000)
+import yaml
+
+# set parameters:
+cpu_count = multiprocessing.cpu_count() # 4
+vocab_dim = 100
+n_iterations = 1  # ideally more..
+n_exposures = 10 #
+window_size = 7
+n_epoch = 4
+input_length = 100
+maxlen = 100
+
+batch_size = 32
+
+
+def loadfile():
+    neg=pd.read_excel('F:\\DM\\TDB\\第三问\\neg.xlsx',header=None,index_col=None)
+    pos=pd.read_excel('F:\\DM\\TDB\\第三问\\pos.xlsx',header=None,index_col=None)
+    neu=pd.read_excel('F:\\DM\\TDB\\第三问\\neutral.xlsx', header=None, index_col=None)
+
+    combined = np.concatenate((pos[0], neu[0], neg[0]))
+    y = np.concatenate((np.ones(len(pos), dtype=int), np.zeros(len(neu), dtype=int),
+                        -1*np.ones(len(neg),dtype=int)))
+
+    return combined,y
+
+
+#对句子经行分词，并去掉换行符
+def tokenizer(text):
+    text = [jieba.lcut(document.replace('\n', '')) for document in str(text)]
+    return text
+
+
+def create_dictionaries(model=None,
+                        combined=None):
+    if (combined is not None) and (model is not None):
+        gensim_dict = Dictionary()
+        gensim_dict.doc2bow(model.vocab.keys(),
+                            allow_update=True)
+        #  freqxiao10->0 所以k+1
+        w2indx = {v: k+1 for k, v in gensim_dict.items()}#所有频数超过10的词语的索引,(k->v)=>(v->k)
+        w2vec = {word: model[word] for word in w2indx.keys()}#所有频数超过10的词语的词向量, (word->model(word))
+
+        def parse_dataset(combined): # 闭包-->临时使用
+            ''' Words become integers
+            '''
+            data=[]
+            for sentence in combined:
+                new_txt = []
+                for word in sentence:
+                    try:
+                        new_txt.append(w2indx[word])
+                    except:
+                        new_txt.append(0) # freqxiao10->0
+                data.append(new_txt)
+            return data # word=>index
+        combined=parse_dataset(combined)
+        combined= sequence.pad_sequences(combined, maxlen=maxlen)#每个句子所含词语对应的索引，所以句子中含有频数小于10的词语，索引为0
+        return w2indx, w2vec,combined
+    else:
+        print('No data provided...')
+
+
+#创建词语字典，并返回每个词语的索引，词向量，以及每个句子所对应的词语索引
+def word2vec_train(combined):
+
+    model = Word2Vec(vector_size=vocab_dim,
+                     min_count=n_exposures,
+                     window=window_size,
+                     workers=cpu_count,
+                     alpha=0.025,
+                    )
+    model.build_vocab(combined) # input: list
+    print(combined)
+    model.train(combined, total_examples=model.corpus_count, epochs=model.iter)
+    model.save('F:\\DM\\TDB\\第三问\\model\\Word2vec_model.pkl')
+    index_dict, word_vectors,combined = create_dictionaries(model=model,combined=combined)
+    return   index_dict, word_vectors,combined
+
+
+def get_data(index_dict,word_vectors,combined,y):
+
+    n_symbols = len(index_dict) + 1  # 所有单词的索引数，频数小于10的词语索引为0，所以加1
+    embedding_weights = np.zeros((n_symbols, vocab_dim)) # 初始化 索引为0的词语，词向量全为0
+    for word, index in index_dict.items(): # 从索引为1的词语开始，对每个词语对应其词向量
+        embedding_weights[index, :] = word_vectors[word]
+    x_train, x_test, y_train, y_test = train_test_split(combined, y, test_size=0.2)
+    y_train =keras.utils.to_categorical(y_train,num_classes=3)
+    y_test =keras.utils.to_categorical(y_test,num_classes=3)
+    # print x_train.shape,y_train.shape
+    return n_symbols,embedding_weights,x_train,y_train,x_test,y_test
+
+
+##定义网络结构
+def train_lstm(n_symbols,embedding_weights,x_train,y_train,x_test,y_test):
+    print('Defining a Simple Keras Model...')
+    model = Sequential()  # or Graph or whatever
+    model.add(Embedding(output_dim=vocab_dim,
+                        input_dim=n_symbols,
+                        mask_zero=True,
+                        weights=[embedding_weights],
+                        input_length=input_length))  # Adding Input Length
+    model.add(LSTM(output_dim=50, activation='tanh'))
+    model.add(Dropout(0.5))
+    model.add(Dense(3, activation='softmax')) # Dense=>全连接层,输出维度=3
+    model.add(Activation('softmax'))
+
+    print('Compiling the Model...')
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam',metrics=['accuracy'])
+
+    print("Train...")# batch_size=32
+    model.fit(x_train, y_train, batch_size=batch_size, epochs=n_epoch,verbose=1)
+
+    print("Evaluate...")
+    score = model.evaluate(x_test, y_test,
+                                batch_size=batch_size)
+
+    yaml_string = model.to_yaml()
+    with open('F:\\DM\\TDB\\第三问\\model\\lstm.yml', 'w') as outfile:
+        outfile.write( yaml.dump(yaml_string, default_flow_style=True) )
+    model.save_weights('F:\\DM\\TDB\\第三问\\model\\lstm.h5')
+    print('Test score:', score)
+
+
+#训练模型，并保存
+print('Loading Data...')
+combined,y=loadfile()
+print (len(combined),len(y))
+print ('Tokenising...')
+combined = tokenizer(combined)
+print ('Training a Word2vec model...')
+index_dict, word_vectors,combined=word2vec_train(combined)
+
+print ('Setting up Arrays for Keras Embedding Layer...')
+n_symbols,embedding_weights,x_train,y_train,x_test,y_test=get_data(index_dict, word_vectors,combined,y)
+print ("x_train.shape and y_train.shape:")
+print (x_train.shape,y_train.shape)
+train_lstm(n_symbols,embedding_weights,x_train,y_train,x_test,y_test)
+
+
+
+
+# 开发时间 ；2021/5/2 0003 22:47
+import jieba
+import numpy as np
+import yaml
+import sys
+from keras.preprocessing import sequence
+from keras.models import model_from_yaml
+
+# K.clear_session()
+
+
+np.random.seed(1337)  # For Reproducibility
+sys.setrecursionlimit(1000000)
+# define parameters
+maxlen = 100
+w2indx = {}
+f = open("F:\\news-analyst-master\\step3_sentimentAnalysis\\lstm\\word2index.txt", 'r', encoding='utf8')
+lines = f.readlines()
+for line in lines:
+    if line.strip() == '':
+        continue
+    s = line.split()
+    w2indx[s[0]] = int(s[1])
+f.close()
+
+
+def create_dictionaries(words):
+    data = []
+    for sentence in words:
+        new_txt = []
+        for word in sentence:
+            try:
+                new_txt.append(w2indx[word])
+            except:
+                new_txt.append(0)
+        data.append(new_txt)
+    combined = sequence.pad_sequences(data, maxlen=maxlen)
+    return combined
+
+
+def input_transform(string):
+    words = jieba.lcut(string)
+    print(words)
+    words = np.array(words).reshape(1, -1)
+
+    combined = create_dictionaries(words)
+
+    return combined
+
+
+def lstm_predict(string):
+    f1 = open('F:\\news-analyst-master\\step3_sentimentAnalysis\\comments_sentiment.txt', 'a+')
+    print('loading model......')
+    with open('F:\\DM\\TDB\\第三问\\model\\lstm.yml', 'r') as f:
+        yaml_string = yaml.load(f)
+    model = model_from_yaml(yaml_string)
+
+    print('loading weights......')
+    model.load_weights('F:\\DM\\TDB\\第三问\\model\\lstm.h5')
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adam', metrics=['accuracy'])
+    data = input_transform(string)
+    data.reshape(1, -1)
+    print(data)
+    #result = model.predict_classes(data)
+    result = np.argmax(model.predict(data),axis=-1)
+    # print result # [[1]]
+    if result[0] == 1:
+        print (string,' Effective comments')
+        f1.writelines(string + ' ' + 'positive\n')
+    elif result[0] == 0:
+        print(string, ' neural')
+    else:
+        f1.writelines(string + ' ' + 'negative\n')
+        print (string,' Effective comments')
+
+
+
+string = '做父母一定要有刘墉这样的心态，不断地学习，不断地进步，不断地给自己补充新鲜血液，让自己保持一颗年轻的心。我想，这是他能很好的和孩子沟通的一个重要因素。读刘墉的文章，总能让我看到一个快乐的平易近人的父亲，他始终站在和孩子同样的高度，给孩子创造着一个充满爱和自由的生活环境。很喜欢刘墉在字里行间流露出的做父母的那种小狡黠，让人总是忍俊不禁，父母和子女之间有时候也是一种战斗，武力争斗过于低级了，智力较量才更有趣味。所以，做父母的得加把劲了，老思想老观念注定会一败涂地，生命不息，学习不止。家庭教育，真的是乐在其中。'
+ 
+lstm_predict(string)
