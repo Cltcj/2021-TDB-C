@@ -1,0 +1,37 @@
+# 开发时间 ；2021/3/24 0024 15:29
+
+import pandas as pd
+import numpy as np
+import openpyxl
+def merge_same_comment(df):
+    pd.set_option('display.width',10)
+    pd.set_option('display.max_rows',10)
+    pd.set_option('display.max_colwidth',10)
+    #df = pd.read_excel('F:\\DM\\附件1\\景区评论（样例数据）.xlsx')
+    df['评论内容']=df['评论内容'].astype(str)
+    #print(df['评论详情'])
+    #根据key='景区名称'进行分组，以，为分割隔开，将key相同的进行合并
+    df1=df.groupby(['景区名称']).apply(lambda x:[','.join(x['评论内容'])])
+    #print(df1.head())
+    return df1.to_excel('F:\\DM\\TDB\\第一问\\comment.xlsx')
+merge_same_comment(pd.read_excel('F:\\DM\\TDB\\第一问\\new_all_comment.xlsx'))
+
+#def set_target_comment():
+df2=openpyxl.load_workbook('F:\\DM\\TDB\\第一问\\comment.xlsx')
+#df2=pd.read_csv('F:\\DM\\附件1\\target_comment.csv')
+sheet=df2['Sheet1']
+sheet['B1']='评论详情'
+sheet.delete_rows(102) #删除从第一行开始算的2行内容
+
+'''
+for index,row in enumerate(sheet.rows):
+    if index==0:
+        row[0].value="景区名称"  #每一行的一个row[0]就是第一列
+    else:
+        row[0].value=index
+'''
+
+
+
+df2.save('F:\\DM\\TDB\\第一问\\comment_1.xlsx')
+
