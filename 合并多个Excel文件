@@ -1,0 +1,90 @@
+  # 开发时间 ；2021/4/25 0025 22:13
+
+#导入相关库
+import os
+import xlwt, xlrd
+import xlsxwriter as xw
+
+
+work_book=xlwt.Workbook('F:\\DM\\TDB\\附件1\\all_comment.xlsx')#建立一个excel文件
+file_path='F:\\DM\\TDB\\附件1'#设置路径
+file_list=os.listdir(file_path)#返回指定的文件夹包含的文件或文件夹的名字的列表
+# print(file_list)
+for file in file_list:
+    file_name=os.path.join(file_path,file)#将多个路径组合后返回(这里是路径+文件名）
+    workbook=xlrd.open_workbook(file_name)#打开文件
+    sheet_name=workbook.sheet_names()#获取sheet名
+    for file_1 in sheet_name:
+        value=[]
+        new_sheet=work_book.add_sheet(file_1,cell_overwrite_ok=True)#新建sheet
+        table=workbook.sheet_by_name(file_1)#获得工作簿
+        rows=table.nrows
+        cols=table.ncols
+        #依次读取每一行
+        for i in range(rows):
+            value.append(table.row_values(i))  #每一行都放到value中
+            for x in range(len(value)):#循环每一句话的长度
+                for y in range(len(value[x])):#每一句话的字数
+                    new_sheet.write(x, y, value[x][y])
+        work_book.save('F:\\DM\\TDB\\all_comment.xlsx')
+
+
+#将多个Excel文件合并成一个
+
+def open_xls(file):
+    '''
+    :param file:
+    :return:打开的excel文件
+    '''
+    fh=xlrd.open_workbook(file)
+    return fh
+
+#获取excel中所有的sheet表
+def getsheet(fh):
+    return fh.sheets()
+
+#获取sheet表的行数
+def getnrows(fh,sheet):
+    table=fh.sheets()[sheet]
+    return table.nrows
+
+#读取文件内容并返回行内容
+def getFilect(file,shnum):
+    fh=open_xls(file)
+    table=fh.sheets()[shnum]
+    num=table.nrows
+    for row in range(num):
+        rdata=table.row_values(row)
+        datavalue.append(rdata)
+    return datavalue
+
+#获取sheet表的个数
+def getshnum(fh):
+    x=0
+    sh=getsheet(fh)
+    for sheet in sh:
+        x+=1
+    return x
+
+if __name__=='__main__':
+    #定义要合并的excel文件列表
+    allxls=['F:\\DM\\TDB\\all_comment.xlsx']
+    #存储所有读取的结果
+    datavalue=[]
+    for fl in allxls:
+        fh=open_xls(fl)
+        x=getshnum(fh)
+        for shnum in range(x):
+            print("正在读取文件："+str(fl)+"的第"+str(shnum)+"个sheet表的内容...")
+            rvalue=getFilect(fl,shnum)
+    #定义最终合并后生成的新文件
+    endfile='F:\\DM\\TDB\\new_all_comment.xlsx'
+    wb1=xw.Workbook(endfile)
+    #创建一个sheet工作对象h
+    ws=wb1.add_worksheet()
+    for a in range(len(rvalue)):
+        for b in range(len(rvalue[a])):
+            c=rvalue[a][b]
+            ws.write(a,b,c)
+    wb1.close()
+    print("文件合并完成")
