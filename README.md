@@ -1,7 +1,6 @@
 # 2021-TDB-C
- In recent years, to improve the public trust, goodwill,
- acceptance and welcome of scenic spots, hotels and other tourist destinations has become the local cultural and 
- tourism departments and tourism related enterprises attach great importance to and focus on the work, which involves how to 
+ > In recent years, to improve the public trust, goodwill, acceptance and welcome of scenic spots, hotels and other tourist destinations has become the local cultural 
+ and tourism departments and tourism related enterprises attach great importance to and focus on the work, which involves how to 
  stabilize the source of tourists, improve the competitiveness of the peer to attract tourists to visit and consumption and 
  other important matters.According to the data, the tourist satisfaction is closely related to the reputation of the destination. 
  The higher the tourist satisfaction is, the greater the reputation of the destination will be.Therefore,
